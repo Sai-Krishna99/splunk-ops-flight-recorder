@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ops Flight Recorder</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">OFR</span>
+          <div>
+            <h1>Ops Flight Recorder</h1>
+            <p>Splunk incident reconstruction</p>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="section-label">Incidents</div>
+          <div id="incident-list" class="incident-list"></div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="section-label">Adapter</div>
+          <div class="adapter-status">
+            <span class="status-dot"></span>
+            Demo Splunk evidence
+          </div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="incident-header">
+          <div>
+            <div class="eyebrow">Incident Command Workspace</div>
+            <h2 id="incident-title">Loading incident</h2>
+            <div id="incident-meta" class="incident-meta"></div>
+          </div>
+          <div class="confidence-panel">
+            <span>Confidence</span>
+            <strong id="incident-confidence">--</strong>
+          </div>
+        </header>
+
+        <section class="content-grid">
+          <section class="timeline-panel">
+            <div class="panel-heading">
+              <h3>Evidence Timeline</h3>
+              <span id="timeline-count"></span>
+            </div>
+            <div id="timeline" class="timeline"></div>
+          </section>
+
+          <aside class="investigation-panel">
+            <div class="panel-heading">
+              <h3>AI Investigation</h3>
+            </div>
+            <div id="hypotheses" class="hypotheses"></div>
+            <div class="panel-heading compact">
+              <h3>Recommended Actions</h3>
+            </div>
+            <div id="actions" class="actions"></div>
+          </aside>
+        </section>
+
+        <section class="lower-grid">
+          <section class="evidence-panel">
+            <div class="panel-heading">
+              <h3>Blast Radius</h3>
+            </div>
+            <div id="blast-radius" class="blast-radius"></div>
+          </section>
+
+          <section class="postmortem-panel">
+            <div class="panel-heading">
+              <h3>Postmortem Draft</h3>
+            </div>
+            <div id="postmortem" class="postmortem"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js" type="module"></script>
+  </body>
+</html>
