@@ -24,7 +24,7 @@
 
         <div class="sidebar-section">
           <div class="section-label">Adapter</div>
-          <div class="adapter-status">
+          <div id="adapter-status" class="adapter-status">
             <span class="status-dot"></span>
             Demo Splunk evidence
           </div>
@@ -43,6 +43,14 @@
             <strong id="incident-confidence">--</strong>
           </div>
         </header>
+
+        <section class="plan-panel">
+          <div class="panel-heading">
+            <h3>Investigation Plan</h3>
+            <span id="plan-objective"></span>
+          </div>
+          <div id="investigation-plan" class="investigation-plan"></div>
+        </section>
 
         <section class="content-grid">
           <section class="timeline-panel">
@@ -66,19 +74,27 @@
         </section>
 
         <section class="lower-grid">
-          <section class="evidence-panel">
+          <section class="blast-panel">
             <div class="panel-heading">
               <h3>Blast Radius</h3>
             </div>
             <div id="blast-radius" class="blast-radius"></div>
           </section>
 
-          <section class="postmortem-panel">
+          <section class="evidence-panel">
             <div class="panel-heading">
-              <h3>Postmortem Draft</h3>
+              <h3>Evidence Explorer</h3>
+              <span id="evidence-count"></span>
             </div>
-            <div id="postmortem" class="postmortem"></div>
+            <div id="evidence-explorer" class="evidence-explorer"></div>
           </section>
+        </section>
+
+        <section class="postmortem-panel">
+          <div class="panel-heading">
+            <h3>Postmortem Draft</h3>
+          </div>
+          <div id="postmortem" class="postmortem"></div>
         </section>
       </main>
     </div>

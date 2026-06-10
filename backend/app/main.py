@@ -6,7 +6,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.incident_service import IncidentService
-from backend.app.models import IncidentAnalysis, IncidentSummary
+from backend.app.models import (
+    AdapterStatus,
+    Evidence,
+    IncidentAnalysis,
+    IncidentEvent,
+    IncidentSummary,
+)
 
 app = FastAPI(title="Ops Flight Recorder", version="0.1.0")
 service = IncidentService()
@@ -31,7 +37,12 @@ def workspace() -> FileResponse:
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "mode": "demo"}
+    return {"status": "ok", "mode": service.adapter_status().mode}
+
+
+@app.get("/api/adapter/status", response_model=AdapterStatus)
+def adapter_status() -> AdapterStatus:
+    return service.adapter_status()
 
 
 @app.get("/api/incidents", response_model=list[IncidentSummary])
@@ -43,5 +54,21 @@ def list_incidents() -> list[IncidentSummary]:
 def analyze_incident(incident_id: str) -> IncidentAnalysis:
     try:
         return service.analyze_incident(incident_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/incidents/{incident_id}/events", response_model=list[IncidentEvent])
+def list_events(incident_id: str) -> list[IncidentEvent]:
+    try:
+        return service.list_events(incident_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/incidents/{incident_id}/evidence", response_model=list[Evidence])
+def list_evidence(incident_id: str) -> list[Evidence]:
+    try:
+        return service.list_evidence(incident_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

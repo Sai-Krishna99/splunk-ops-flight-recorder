@@ -68,6 +68,7 @@ class RootCauseHypothesis(BaseModel):
     title: str
     confidence: float = Field(ge=0, le=1)
     reasoning: str
+    scoring_signals: list[str]
     supporting_evidence: list[Evidence]
 
 
@@ -112,3 +113,10 @@ class IncidentAnalysis(BaseModel):
     blast_radius: BlastRadius
     recommended_actions: list[RecommendedAction]
     postmortem: PostmortemDraft
+
+
+class AdapterStatus(BaseModel):
+    mode: Literal["demo", "real"]
+    source: Literal["splunk_demo", "splunk_search", "splunk_mcp"]
+    description: str
+    next_steps: list[str]
