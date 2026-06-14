@@ -1,13 +1,12 @@
 # Ops Flight Recorder — AI Incident Command for Splunk
 
-**Built with:** Python 3.11 · FastAPI · Splunk Enterprise 10.4 · Splunk MCP Server (Model Context Protocol) · Splunk hosted models / Claude · Pydantic v2 · zero-dependency JS dashboard · uv · MIT licensed
+**Built with:** Python 3.11 · FastAPI · Splunk Enterprise 10.4 · Splunk MCP Server (Model Context Protocol) · Splunk hosted models · Pydantic v2 · zero-dependency JS dashboard · uv · MIT licensed
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
 [![Splunk](https://img.shields.io/badge/Splunk-Enterprise%2010.4-65A637.svg)](https://www.splunk.com/)
 [![Splunk MCP Server](https://img.shields.io/badge/Splunk-MCP%20Server%207931-65A637.svg)](https://splunkbase.splunk.com/app/7931)
 [![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-1.27-000000.svg)](https://modelcontextprotocol.io/)
-[![Claude](https://img.shields.io/badge/Claude-Sonnet%204.6-886FBF.svg)](https://www.anthropic.com/)
 [![Tests](https://img.shields.io/badge/tests-31%20passing-brightgreen.svg)](#verification)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -27,7 +26,7 @@ Ops Flight Recorder is an **agentic incident-command workspace**. Point it at an
 - **Evidence-grounded AI** — every hypothesis, action, and postmortem reference cites a real Splunk evidence ID; the model is structurally prevented from fabricating evidence.
 - **Three retrieval modes behind one boundary** — `demo` (deterministic), `real` (REST search), `mcp` (Splunk MCP Server) — the analysis engine, AI layer, and UI never change.
 - **Deterministic where it matters** — if the model is unavailable or misconfigured, the analysis falls back to a transparent rule engine, so the API and the demo never break.
-- **Provider-pluggable reasoning** — Splunk hosted models, any OpenAI-compatible endpoint, or Claude — selected by one env var, dependency-free (stdlib HTTP).
+- **Provider-pluggable reasoning** — Splunk hosted models or any OpenAI-compatible endpoint, selected by one env var, dependency-free (stdlib HTTP).
 - **31 tests passing** — `uv run pytest`; the AI and MCP paths are unit-tested with injected fakes (no network, no live model).
 
 ## Run Modes at a Glance
@@ -56,7 +55,7 @@ flowchart LR
     end
     NORM["Normalize → IncidentEvent / Evidence"]
     subgraph AGENT["Agentic analysis"]
-        AI["AI reasoning<br/>Splunk hosted model / Claude"]
+        AI["AI reasoning<br/>Splunk hosted models"]
         DET["Deterministic fallback"]
     end
     UI["Incident Command UI<br/>timeline · hypotheses · blast radius · actions · postmortem"]
@@ -81,7 +80,7 @@ flowchart LR
 |---|---|---|
 | **Retrieval** | Splunk MCP Server (app 7931) · Splunk REST search export | Pull incident evidence from Splunk; three adapters behind one `SplunkAdapter` protocol |
 | **MCP client** | `mcp` Python SDK over streamable HTTP | Calls `splunk_run_query` at `/services/mcp` with a Bearer token; imported lazily |
-| **Reasoning** | Splunk hosted models / any OpenAI-compatible endpoint / Claude | Ranked hypotheses, recommended actions, postmortem — evidence-grounded, temperature 0 |
+| **Reasoning** | Splunk hosted models / any OpenAI-compatible endpoint | Ranked hypotheses, recommended actions, postmortem — evidence-grounded, temperature 0 |
 | **Analysis core** | Deterministic Python engine | Timeline, hypothesis scoring, blast radius, actions, postmortem — the demo-safe fallback, fully unit-tested |
 | **API** | FastAPI | JSON API serving the analysis and raw evidence |
 | **Dashboard** | Zero-dependency HTML/CSS/JS | Incident-command UI served as static files by FastAPI |
@@ -101,24 +100,6 @@ When AI is enabled, `backend/app/ai_analyst.py` hands the model the incident and
 ### 3. Decide — transparent reconstruction
 
 Every incident becomes: an **investigation plan**, an **evidence-backed timeline**, **ranked root-cause hypotheses** (with confidence + scoring signals + supporting evidence), a **blast-radius** summary (impacted services/regions, customer impact, key metrics), **recommended actions** (prioritized, with owners), and a **postmortem draft**. The deterministic path is a pure function of the evidence; the AI path enriches the language while staying grounded.
-
-## Demo Scenario
-
-The bundled incident (`backend/app/demo_data.py`) is a realistic checkout outage:
-
-```text
-14:00  checkout baseline healthy
-14:07  payment-service v2.18.0 deployed (us-east, us-west)
-14:11  checkout p95 latency 220ms → 1450ms
-14:14  payment retries 1.7/s → 18/s
-14:18  HTTP 502/504 errors climb
-14:22  checkout success rate drops to 81.4% (~1,260 orders)
-14:25  auth-service stays healthy (ruled out)
-14:36  payment-service rolled back to v2.17.3
-14:43  checkout recovers
-```
-
-Top hypothesis: **payment-service v2.18.0 introduced checkout dependency failures** — supported by the deploy marker, retry surge, gateway errors, customer-impact metric, and the rollback→recovery chain.
 
 ## Project Structure
 
@@ -143,7 +124,7 @@ splunk-ops-flight-recorder/
 ├── frontend/                   # incident-command dashboard (index.html · app.js · styles.css)
 ├── scripts/
 │   └── ingest_demo_data.py     # push the demo incident into Splunk (management API)
-└── docs/                       # architecture · demo-script · splunk-mcp (setup guide)
+└── docs/                       # architecture · splunk-mcp (setup guide)
 ```
 
 ## Quick Start
@@ -168,11 +149,6 @@ export OPS_FLIGHT_RECORDER_AI=openai
 export OPENAI_BASE_URL="<hosted model endpoint>"   # e.g. https://.../v1
 export OPENAI_API_KEY="<token>"                    # or SPLUNK_AI_API_KEY
 export OPS_FLIGHT_RECORDER_AI_MODEL="<model name>"
-
-# …or Anthropic Claude:
-export OPS_FLIGHT_RECORDER_AI=anthropic
-export ANTHROPIC_API_KEY="<key>"
-export OPS_FLIGHT_RECORDER_AI_MODEL="claude-sonnet-4-6"
 ```
 
 Analysis then returns `"reasoning": "ai"` and a `reasoning_model`; otherwise it stays `"deterministic"`. On Windows PowerShell use `$env:NAME="value"`.
@@ -229,16 +205,6 @@ The AI layer is tested with an injected fake client (grounding + fallback), and 
 http://127.0.0.1:8011/api/adapter/status
 http://127.0.0.1:8011/api/incidents/inc-checkout-payment-2026-06-06/analysis
 ```
-
-## Submission Checklist (Splunk Agentic Ops Hackathon)
-
-- ✅ **Open-source license** — [`LICENSE`](LICENSE) (MIT) at the repo root; GitHub surfaces it in the **About** sidebar.
-- ✅ **Architecture diagram** — [`architecture_diagram.md`](architecture_diagram.md) at the repo root (app ↔ Splunk, AI integration, data flow).
-- ✅ **Clear README** — this document.
-- ✅ **Setup & run instructions** — [Quick Start](#quick-start) covers all three modes plus AI.
-- ✅ **Dependencies** — `pyproject.toml` + `uv.lock` (`uv sync`).
-- ✅ **Example dataset** — the deterministic demo incident in `backend/app/demo_data.py`, ingestable into Splunk via `scripts/ingest_demo_data.py`.
-- ✅ **Uses Splunk AI capabilities** — the Splunk MCP Server for retrieval and Splunk hosted models for reasoning.
 
 ## License
 
