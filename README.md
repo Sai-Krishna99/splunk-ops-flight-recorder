@@ -1,6 +1,6 @@
 # Ops Flight Recorder — AI Incident Command for Splunk
 
-**Built with:** Python 3.11 · FastAPI · Splunk Enterprise 10.4 · Splunk MCP Server (Model Context Protocol) · Splunk hosted models · Pydantic v2 · zero-dependency JS dashboard · uv · MIT licensed
+**Built with:** Python 3.11 · FastAPI · Splunk Enterprise 10.4 · Splunk MCP Server (Model Context Protocol) · pluggable LLM reasoning (OpenAI-compatible) · Pydantic v2 · zero-dependency JS dashboard · uv · MIT licensed
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
@@ -17,7 +17,7 @@ The worst part of an incident isn't the fix — it's the first 30 minutes of *fi
 
 Ops Flight Recorder is an **agentic incident-command workspace**. Point it at an incident and it pulls the evidence from Splunk through the **Splunk MCP Server**, assembles a chronological reconstruction, and runs an AI agent that ranks root-cause hypotheses (each citing the exact Splunk evidence), quantifies the customer blast radius, recommends prioritized actions, and drafts the postmortem. The model may only cite evidence IDs returned from Splunk, so it **cannot invent facts**.
 
-*Splunk Agentic Ops Hackathon — Observability track. Also targeting **Best Use of Splunk MCP Server** and **Best Use of Splunk Hosted Models**.*
+*Splunk Agentic Ops Hackathon — Observability track. Also targeting **Best Use of Splunk MCP Server**.*
 
 ## Quick Highlights
 
@@ -26,7 +26,7 @@ Ops Flight Recorder is an **agentic incident-command workspace**. Point it at an
 - **Evidence-grounded AI** — every hypothesis, action, and postmortem reference cites a real Splunk evidence ID; the model is structurally prevented from fabricating evidence.
 - **Three retrieval modes behind one boundary** — `demo` (deterministic), `real` (REST search), `mcp` (Splunk MCP Server) — the analysis engine, AI layer, and UI never change.
 - **Deterministic where it matters** — if the model is unavailable or misconfigured, the analysis falls back to a transparent rule engine, so the API and the demo never break.
-- **Provider-pluggable reasoning** — Splunk hosted models or any OpenAI-compatible endpoint, selected by one env var, dependency-free (stdlib HTTP).
+- **Provider-pluggable reasoning** — any OpenAI-compatible endpoint (Splunk hosted models supported), selected by one env var, dependency-free (stdlib HTTP).
 - **31 tests passing** — `uv run pytest`; the AI and MCP paths are unit-tested with injected fakes (no network, no live model).
 
 ## Run Modes at a Glance
@@ -97,7 +97,7 @@ graph TB
 
     SPLUNK["Splunk Enterprise / Cloud<br/>index=ops_demo"]
     MCPSRV["Splunk MCP Server (app 7931)"]
-    MODEL["Splunk hosted model /<br/>OpenAI-compatible endpoint"]
+    MODEL["LLM endpoint<br/>(OpenAI-compatible)"]
 
     UI --> API
     API --> ORCH
@@ -147,7 +147,7 @@ Component responsibilities and the data-flow write-up are in [`architecture_diag
 |---|---|---|
 | **Retrieval** | Splunk MCP Server (app 7931) · Splunk REST search export | Pull incident evidence from Splunk; three adapters behind one `SplunkAdapter` protocol |
 | **MCP client** | `mcp` Python SDK over streamable HTTP | Calls `splunk_run_query` at `/services/mcp` with a Bearer token; imported lazily |
-| **Reasoning** | Splunk hosted models / any OpenAI-compatible endpoint | Ranked hypotheses, recommended actions, postmortem — evidence-grounded, temperature 0 |
+| **Reasoning** | Pluggable LLM over an OpenAI-compatible endpoint (Splunk hosted models supported) | Ranked hypotheses, recommended actions, postmortem — evidence-grounded, temperature 0 |
 | **Analysis core** | Deterministic Python engine | Timeline, hypothesis scoring, blast radius, actions, postmortem — the demo-safe fallback, fully unit-tested |
 | **API** | FastAPI | JSON API serving the analysis and raw evidence |
 | **Dashboard** | Zero-dependency HTML/CSS/JS | Incident-command UI served as static files by FastAPI |
