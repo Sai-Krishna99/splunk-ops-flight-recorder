@@ -11,7 +11,8 @@ This diagram shows the three things the system depends on:
    either the REST search export API or the **Splunk MCP Server**.
 2. **How AI integrates** — an AI reasoning agent consumes the normalized Splunk
    evidence and produces the analysis (hypotheses, actions, postmortem), backed
-   by a **Splunk hosted model** (or a pluggable LLM).
+   by a pluggable LLM over an OpenAI-compatible endpoint (Splunk hosted models
+   supported).
 3. **The data flow** — from raw Splunk events through normalization, agentic
    reasoning, the JSON API, and finally the workspace UI.
 
@@ -44,7 +45,7 @@ flowchart TB
         FALLBACK["Deterministic engine<br/>(graceful fallback)"]
     end
 
-    MODEL["Splunk hosted model / LLM"]
+    MODEL["LLM endpoint<br/>(OpenAI-compatible)"]
 
     API["FastAPI JSON API<br/>/api/incidents/.../analysis"]
     UI["Incident workspace UI"]
@@ -78,7 +79,7 @@ flowchart TB
 | Data | Splunk index `ops_demo` | System of record for all incident evidence |
 | Retrieval | REST / MCP / demo adapters | Pluggable Splunk access behind one `SplunkAdapter` protocol |
 | Normalize | `SplunkAdapter` row mapping | Convert search rows into `IncidentEvent` + `Evidence` |
-| **AI** | **Reasoning agent + hosted model** | **Plan searches, rank root-cause hypotheses, draft postmortem** |
+| **AI** | **Reasoning agent + pluggable LLM** | **Rank root-cause hypotheses, recommend actions, draft postmortem** |
 | Resilience | Deterministic engine | Fallback so the demo never breaks if the model is unavailable |
 | API | FastAPI | Serve analysis as JSON |
 | UI | Incident workspace | Timeline, hypotheses, blast radius, actions, postmortem, evidence explorer |
@@ -88,6 +89,6 @@ flowchart TB
 Splunk access sits behind `SplunkAdapter`, and reasoning sits behind the agent
 layer. This means demo mode stays deterministic, REST mode works against local
 Splunk today, the **Splunk MCP Server** can be swapped in for retrieval, and the
-**AI model** can be swapped (Splunk hosted model or another LLM) — all without
-changing the API or UI contract. Splunk remains the source of truth; the agent
+**AI model** can be swapped (any OpenAI-compatible endpoint, Splunk hosted
+models supported) — all without changing the API or UI contract. Splunk remains the source of truth; the agent
 turns Splunk evidence into a decision-ready incident reconstruction.
