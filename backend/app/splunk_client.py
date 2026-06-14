@@ -352,7 +352,10 @@ def extract_evidence_fields(row: dict[str, str]) -> dict[str, str | int | float]
     return {
         key: coerce_value(first_value(value) or "")
         for key, value in row.items()
-        if key not in excluded and first_value(value) not in {None, ""}
+        if key not in excluded
+        and not key.startswith("_")  # Splunk internals: _bkt, _cd, _indextime, ...
+        and key != "json_event"  # the rex capture used only to feed spath
+        and first_value(value) not in {None, ""}
     }
 
 

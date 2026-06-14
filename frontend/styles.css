@@ -553,6 +553,8 @@ body {
   border-radius: 6px;
   background: var(--surface-muted);
   padding: 7px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .field-grid strong {
