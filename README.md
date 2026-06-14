@@ -68,6 +68,17 @@ $env:SPLUNK_INDEX="ops_demo"
 $env:SPLUNK_VERIFY_SSL="false"
 ```
 
+macOS / Linux (zsh/bash) — same variables with `export`:
+
+```bash
+export OPS_FLIGHT_RECORDER_ADAPTER="real"
+export SPLUNK_USERNAME="admin"
+export SPLUNK_PASSWORD="<local Splunk password>"
+export SPLUNK_BASE_URL="https://127.0.0.1:8089"
+export SPLUNK_INDEX="ops_demo"
+export SPLUNK_VERIFY_SSL="false"
+```
+
 Ingest the demo incident through the Splunk management API:
 
 ```powershell
@@ -85,6 +96,41 @@ uv run uvicorn backend.app.main:app --host 127.0.0.1 --port 8011
 
 The UI should show `REAL via splunk_search` and evidence source
 `splunk_search`.
+
+## AI Reasoning (Splunk AI)
+
+By default the analysis runs a deterministic, rule-based engine, which keeps the
+demo reliable. To generate the ranked root-cause hypotheses, recommended
+actions, and postmortem with a model instead, enable the AI analyst. The AI
+layer is provider-agnostic and adds no extra dependencies. If the model is
+unreachable or misconfigured it automatically falls back to the deterministic
+engine, so the API never breaks during a demo.
+
+The model may only cite evidence IDs returned from Splunk, so it cannot
+fabricate evidence.
+
+Splunk hosted models / any OpenAI-compatible endpoint (macOS / Linux):
+
+```bash
+export OPS_FLIGHT_RECORDER_AI="openai"
+export OPENAI_BASE_URL="<hosted model endpoint, e.g. https://.../v1>"
+export OPENAI_API_KEY="<token>"          # or SPLUNK_AI_API_KEY
+export OPS_FLIGHT_RECORDER_AI_MODEL="<model name>"
+```
+
+Anthropic Claude:
+
+```bash
+export OPS_FLIGHT_RECORDER_AI="anthropic"
+export ANTHROPIC_API_KEY="<key>"
+export OPS_FLIGHT_RECORDER_AI_MODEL="claude-sonnet-4-6"
+```
+
+On Windows PowerShell use the `$env:NAME="value"` syntax instead of `export`.
+
+When AI is active, `GET /api/incidents/{id}/analysis` returns `"reasoning":
+"ai"` together with a `reasoning_model` field; otherwise it returns
+`"reasoning": "deterministic"`.
 
 ## Troubleshooting
 
@@ -130,21 +176,35 @@ http://127.0.0.1:8011/api/incidents
 http://127.0.0.1:8011/api/incidents/inc-checkout-payment-2026-06-06/analysis
 ```
 
-## Splunk MCP Path
+## Run With Splunk MCP Server
 
-The current working integration uses Splunk REST search export through the local
-Splunk management API. The backend keeps Splunk access behind an adapter so a
-Splunk MCP Server implementation can replace the REST client while preserving
-the same `IncidentEvent` and `Evidence` contract.
+The backend can retrieve evidence through the official **Splunk MCP Server**
+(Splunkbase app 7931) instead of the REST API. It connects over streamable HTTP
+to `https://<host>:8089/services/mcp` with a Bearer token, runs the same SPL
+searches through the MCP run-query tool, and tags evidence with source
+`splunk_mcp`.
 
-If a Splunk MCP Server tool is available to the runtime, use:
+macOS / Linux:
 
-```powershell
-$env:OPS_FLIGHT_RECORDER_ADAPTER="mcp"
+```bash
+# 1) Install the app (Splunkbase 7931), restart Splunk, then mint a token:
+TOKEN=$(curl -sk -u admin:<pw> \
+  "https://127.0.0.1:8089/services/mcp_token?output_mode=json&username=admin&expires_on=%2B30d" \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
+
+# 2) Point the app at the MCP server:
+export OPS_FLIGHT_RECORDER_ADAPTER="mcp"
+export SPLUNK_BASE_URL="https://127.0.0.1:8089"
+export SPLUNK_MCP_TOKEN="$TOKEN"
+export SPLUNK_INDEX="ops_demo"
+export SPLUNK_VERIFY_SSL="false"
+uv run uvicorn backend.app.main:app --host 127.0.0.1 --port 8011
 ```
 
-The current repository includes the adapter slot and documented searches, while
-the working local demo uses the REST fallback.
+The UI sidebar should then report evidence source `splunk_mcp`. The `mcp` Python
+SDK (in `pyproject.toml`) is imported only in this mode. Full setup, tool
+overrides, and the searches are documented in
+[docs/splunk-mcp.md](docs/splunk-mcp.md).
 
-See [docs/architecture.md](docs/architecture.md) and
+See also [docs/architecture.md](docs/architecture.md) and
 [docs/demo-script.md](docs/demo-script.md).

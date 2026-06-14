@@ -127,8 +127,11 @@ def test_incident_summary_handles_splunk_multivalue_lists() -> None:
     assert summary.service == "checkout-service"
 
 
-def test_mcp_adapter_reports_missing_runtime_tool() -> None:
-    status = SplunkMcpAdapter().status()
+def test_mcp_adapter_reports_unconfigured_without_token(monkeypatch) -> None:
+    monkeypatch.delenv("SPLUNK_MCP_TOKEN", raising=False)
+    monkeypatch.delenv("SPLUNK_TOKEN", raising=False)
+
+    status = SplunkMcpAdapter(query_executor=lambda spl: []).status()
 
     assert status.source == "splunk_mcp"
-    assert "no callable Splunk MCP Server tool" in status.description
+    assert "not configured" in status.description

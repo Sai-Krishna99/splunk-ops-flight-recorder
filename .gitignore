@@ -11,3 +11,7 @@ uvicorn*.log
 .agents/
 AGENTS.md
 PROJECT_HANDOFF.md
+
+# Local secrets — never commit
+.env
+.env.*

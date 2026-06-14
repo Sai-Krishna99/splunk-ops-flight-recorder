@@ -72,6 +72,30 @@ class DemoSplunkAdapter:
         )
 
 
+# Ingested events are stored as ``<epoch> {json}``; strip the epoch prefix into a
+# JSON field before spath so the JSON keys (incident_id, service, ...) extract.
+_JSON_FROM_RAW = r'| rex field=_raw "^\d+(?:\.\d+)?\s+(?<json_event>\{.*\})" '
+
+
+def incident_list_search(index: str) -> str:
+    return (
+        f"search index={index} source=ops-flight-recorder earliest=0 latest=now "
+        + _JSON_FROM_RAW
+        + "| spath input=json_event | search incident_id=* "
+        "| stats min(time) as started_at max(time) as ended_at "
+        "values(service) as services values(severity) as severities "
+        "by incident_id | sort - started_at"
+    )
+
+
+def incident_events_search(index: str, incident_id: str) -> str:
+    return (
+        f"search index={index} source=ops-flight-recorder earliest=0 latest=now "
+        + _JSON_FROM_RAW
+        + f'| spath input=json_event | search incident_id="{incident_id}" | sort 0 time'
+    )
+
+
 class RealSplunkAdapter:
     def __init__(
         self,
@@ -82,24 +106,12 @@ class RealSplunkAdapter:
         self.client = client or SplunkRestClient(self.config)
 
     def list_incidents(self) -> list[IncidentSummary]:
-        rows = self.client.export_search(
-            (
-                f"search index={self.config.index} source=ops-flight-recorder "
-                "incident_id=* | spath "
-                "| stats min(time) as started_at max(time) as ended_at "
-                "values(service) as services values(severity) as severities "
-                "by incident_id "
-                "| sort - started_at"
-            )
-        )
+        rows = self.client.export_search(incident_list_search(self.config.index))
         return [row_to_incident_summary(row) for row in rows]
 
     def fetch_incident_events(self, incident_id: str) -> list[IncidentEvent]:
         rows = self.client.export_search(
-            (
-                f"search index={self.config.index} source=ops-flight-recorder "
-                f'incident_id="{incident_id}" | spath | sort 0 time'
-            )
+            incident_events_search(self.config.index, incident_id)
         )
         if not rows:
             raise KeyError(f"Unknown Splunk incident: {incident_id}")
@@ -129,28 +141,56 @@ class RealSplunkAdapter:
 
 
 class SplunkMcpAdapter:
+    """Retrieves incident evidence through the official Splunk MCP Server.
+
+    Runs the same SPL searches as the REST adapter, but executes them through
+    the Splunk MCP Server's run-query tool over streamable HTTP, and tags
+    evidence with source ``splunk_mcp``. ``query_executor`` is injectable so the
+    normalization can be tested without a live MCP server.
+    """
+
+    def __init__(
+        self,
+        config: "SplunkMcpConfig | None" = None,
+        query_executor: "Callable[[str], list[dict]] | None" = None,
+    ) -> None:
+        from backend.app.splunk_mcp_client import SplunkMcpConfig, run_mcp_query
+
+        self.config = config or SplunkMcpConfig.from_env()
+        self._execute = query_executor or (lambda spl: run_mcp_query(self.config, spl))
+
     def list_incidents(self) -> list[IncidentSummary]:
-        raise NotImplementedError(
-            "Splunk MCP adapter requires a callable Splunk MCP Server tool."
-        )
+        rows = self._execute(incident_list_search(self.config.index))
+        return [row_to_incident_summary(row) for row in rows]
 
     def fetch_incident_events(self, incident_id: str) -> list[IncidentEvent]:
-        raise NotImplementedError(
-            "Splunk MCP adapter requires a callable Splunk MCP Server tool."
-        )
+        rows = self._execute(incident_events_search(self.config.index, incident_id))
+        if not rows:
+            raise KeyError(f"Unknown Splunk MCP incident: {incident_id}")
+        return [
+            row_to_incident_event(row, self.config.index, source="splunk_mcp")
+            for row in rows
+        ]
 
     def status(self) -> AdapterStatus:
+        if not self.config.has_auth:
+            description = (
+                "Splunk MCP adapter selected, but SPLUNK_MCP_TOKEN (or "
+                "SPLUNK_TOKEN) is not configured."
+            )
+        else:
+            description = (
+                f"Splunk MCP adapter configured for {self.config.url} "
+                f"(tool={self.config.tool}, index={self.config.index})."
+            )
         return AdapterStatus(
             mode="real",
             source="splunk_mcp",
-            description=(
-                "Splunk MCP adapter slot is defined, but no callable Splunk MCP "
-                "Server tool is available in this runtime."
-            ),
+            description=description,
             next_steps=[
-                "Install or expose the Splunk MCP Server tool to the app runtime.",
-                "Execute the documented incident searches through MCP.",
-                "Return rows through the same IncidentEvent and Evidence contract.",
+                "Incident evidence is retrieved through the Splunk MCP Server.",
+                "SPL searches run via the MCP run-query tool over streamable HTTP.",
+                "Rows are normalized into the same IncidentEvent and Evidence contract.",
             ],
         )
 
@@ -241,7 +281,9 @@ def row_to_incident_summary(row: dict[str, str]) -> IncidentSummary:
     )
 
 
-def row_to_incident_event(row: dict[str, str], default_index: str) -> IncidentEvent:
+def row_to_incident_event(
+    row: dict[str, str], default_index: str, source: str = "splunk_search"
+) -> IncidentEvent:
     timestamp = parse_splunk_time(
         row.get("time") or row.get("event_epoch") or row.get("_time")
     )
@@ -256,7 +298,7 @@ def row_to_incident_event(row: dict[str, str], default_index: str) -> IncidentEv
     evidence = Evidence(
         id=evidence_id,
         title=title,
-        source="splunk_search",
+        source=source,  # type: ignore[arg-type]
         query=query,
         index=first_value(row.get("index")) or default_index,
         sourcetype=first_value(row.get("sourcetype")) or "splunk_event",

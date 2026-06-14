@@ -1,74 +1,87 @@
-# Splunk MCP Integration Plan
+# Splunk MCP Server Integration
 
-## Current State
+Ops Flight Recorder retrieves incident evidence through the **official Splunk MCP
+Server** (Splunkbase app **7931**, `Splunk_MCP_Server` v1.2.0). In this mode the
+backend acts as an MCP client: it runs the same SPL searches as the REST adapter,
+but executes them through the MCP Server's `splunk_run_query` tool over streamable
+HTTP, and tags evidence with source `splunk_mcp`.
 
-Ops Flight Recorder currently has a working local Splunk integration through
-Splunk REST search export on the management API:
+This integration is verified end to end against a local Splunk Enterprise 10.4.0
+with the MCP Server app installed.
 
-```text
-https://127.0.0.1:8089/services/search/jobs/export
-```
+## How It Connects
 
-This is enough for the demo to show real Splunk-backed evidence with source:
+- **Transport:** streamable HTTP (the MCP Server runs inside Splunk).
+- **Endpoint:** `https://<splunk-host>:8089/services/mcp` (POST only).
+- **Auth:** `Authorization: Bearer <token>` — a Splunk-issued JWT (audience `mcp`)
+  minted by the app's `/services/mcp_token` endpoint.
+- **Tool:** `splunk_run_query` with args `query` (required), `earliest_time`,
+  `latest_time`, `row_limit`. Tool results come back as `{"results": [...]}`.
+- **SDK:** the official `mcp` Python package, imported lazily. The client uses
+  `terminate_on_close=False` because Splunk exposes `/services/mcp` as POST-only.
 
-```text
-splunk_search
-```
+## Setup
 
-## MCP Target
+1. **Install the app**: download Splunk MCP Server from Splunkbase (app 7931), then:
 
-The MCP target is to replace the REST search execution in `RealSplunkAdapter`
-with Splunk MCP Server tool calls while preserving the rest of the app.
+   ```bash
+   /Applications/Splunk/bin/splunk install app /path/to/splunk-mcp-server_120.tgz -auth admin:<pw>
+   /Applications/Splunk/bin/splunk restart
+   ```
 
-The MCP adapter should return the same normalized models:
+   Confirm `/services/mcp` responds (HTTP 400 to an empty POST means it is live).
 
-- `IncidentSummary`
-- `IncidentEvent`
-- `Evidence`
+2. **Ingest the demo data** (see the README) so `index=ops_demo` has the nine
+   `ops-flight-recorder` events.
 
-Evidence from MCP should use:
+3. **Mint a token** (the `admin` role already has `mcp_tool_admin` /
+   `mcp_tool_execute`):
 
-```text
-source = "splunk_mcp"
-```
+   ```bash
+   curl -sk -u admin:<pw> \
+     "https://127.0.0.1:8089/services/mcp_token?output_mode=json&username=admin&expires_on=%2B30d"
+   # -> {"token": "<bearer token>"}
+   ```
 
-## Required MCP Searches
+4. **Configure the environment** (macOS / Linux):
 
-Incident list:
+   ```bash
+   export OPS_FLIGHT_RECORDER_ADAPTER="mcp"
+   export SPLUNK_BASE_URL="https://127.0.0.1:8089"   # MCP URL derived as .../services/mcp
+   export SPLUNK_MCP_TOKEN="<bearer token from step 3>"
+   export SPLUNK_INDEX="ops_demo"
+   export SPLUNK_VERIFY_SSL="false"
+   # Defaults already match the app; override only if needed:
+   # export SPLUNK_MCP_TOOL="splunk_run_query"
+   # export SPLUNK_MCP_QUERY_ARG="query"
+   ```
 
-```spl
-search index=ops_demo source=ops-flight-recorder incident_id=*
-| spath
-| stats min(time) as started_at max(time) as ended_at
-        values(service) as services values(severity) as severities
-        by incident_id
-| sort - started_at
-```
+5. **Run and confirm** `source = splunk_mcp`:
 
-Incident events:
+   ```bash
+   uv run uvicorn backend.app.main:app --host 127.0.0.1 --port 8011
+   # GET http://127.0.0.1:8011/api/adapter/status  -> "source": "splunk_mcp"
+   ```
 
-```spl
-search index=ops_demo source=ops-flight-recorder
-      incident_id="inc-checkout-payment-2026-06-06"
-| spath
-| sort 0 time
-```
+## Searches Executed
+
+The list and event searches strip the ingested `<epoch> {json}` prefix and use
+`spath` so the JSON fields extract; see `incident_list_search` /
+`incident_events_search` in `backend/app/splunk_client.py`. They are passed to the
+MCP `splunk_run_query` tool as the `query` argument.
+
+## Notes
+
+- `require_encrypted_token = true` is the app default, but Splunk-issued JWTs
+  (what `/services/mcp_token` returns) are accepted directly — no client-side RSA
+  encryption needed.
+- The SAIA AI Assistant tools (`generate_spl`, `ask_splunk_question`, ...) appear
+  once the Splunk AI Assistant app (Splunkbase 7245) is installed.
+- Token lifetime here is 30 days; re-mint with the step-3 command when it expires.
 
 ## Why The Adapter Boundary Matters
 
-The app deliberately keeps Splunk access behind `SplunkAdapter`. That means:
-
-- demo mode stays deterministic,
-- REST mode works against local Splunk today,
-- MCP can be added by swapping only the query execution layer,
-- analysis and UI stay unchanged.
-
-## Implementation Steps
-
-1. Add a `SplunkMcpAdapter`.
-2. Configure `OPS_FLIGHT_RECORDER_ADAPTER=mcp`.
-3. Execute the two required searches through Splunk MCP Server.
-4. Convert MCP result rows with the same row mapping used by REST.
-5. Set `Evidence.source` to `splunk_mcp`.
-6. Re-run the demo and confirm evidence source changes from `splunk_search` to
-   `splunk_mcp`.
+Splunk access stays behind the `SplunkAdapter` protocol, so demo mode stays
+deterministic, REST mode works against local Splunk, and MCP mode swaps only the
+query-execution layer. All three return the same normalized models, so the
+analysis engine, the AI reasoning layer, the API, and the UI are unchanged.

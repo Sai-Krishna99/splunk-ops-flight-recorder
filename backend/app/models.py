@@ -113,6 +113,8 @@ class IncidentAnalysis(BaseModel):
     blast_radius: BlastRadius
     recommended_actions: list[RecommendedAction]
     postmortem: PostmortemDraft
+    reasoning: Literal["deterministic", "ai"] = "deterministic"
+    reasoning_model: str | None = None
 
 
 class AdapterStatus(BaseModel):
