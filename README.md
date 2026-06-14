@@ -41,38 +41,105 @@ AI reasoning is an independent layer (`OPS_FLIGHT_RECORDER_AI`) that overlays on
 
 ## Architecture
 
-Full diagrams (flow + system) are in [`architecture_diagram.md`](architecture_diagram.md) at the repo root. The agentic loop in brief:
+### High-Level Workflow
 
 ```mermaid
-flowchart LR
-    subgraph SP["Splunk (source of truth)"]
-        IDX["index=ops_demo<br/>deploys · metrics · logs · business KPIs"]
+graph LR
+    subgraph S1["STEP 1 · AN INCIDENT"]
+        INC["Production breaks<br/>(checkout degrades)"] --> SPL["Splunk holds the evidence:<br/>deploys · metrics · logs · KPIs"]
     end
-    subgraph RET["Retrieval (pluggable SplunkAdapter)"]
-        MCP["Splunk MCP Server<br/>splunk_run_query"]
-        REST["REST search export"]
-        DEMO["Deterministic demo"]
+    subgraph S2["STEP 2 · RETRIEVE"]
+        SPL --> MCP["Pull evidence via<br/>Splunk MCP Server"]
+        MCP --> NORM["Normalize →<br/>IncidentEvent / Evidence"]
     end
-    NORM["Normalize → IncidentEvent / Evidence"]
-    subgraph AGENT["Agentic analysis"]
-        AI["AI reasoning<br/>Splunk hosted models"]
-        DET["Deterministic fallback"]
+    subgraph S3["STEP 3 · REASON"]
+        NORM --> TL["Build evidence timeline"]
+        TL --> HYP["AI ranks root causes<br/>(grounded in evidence IDs)"]
+        HYP --> BR["Quantify blast radius<br/>& customer impact"]
     end
-    UI["Incident Command UI<br/>timeline · hypotheses · blast radius · actions · postmortem"]
+    subgraph S4["STEP 4 · DECIDE + REPORT"]
+        BR --> ACT["Recommended actions"]
+        ACT --> PM["Postmortem draft"]
+        PM --> UICMD["Incident Command UI"]
+    end
 
-    IDX --> MCP & REST
-    DEMO --> NORM
-    MCP --> NORM
-    REST --> NORM
-    NORM --> AI
-    AI -. on error .-> DET
-    AI --> UI
-    DET --> UI
-
+    style INC fill:#fff4e1,stroke:#f57c00
     style MCP fill:#dff3e8,stroke:#2c6e49
-    style AI fill:#efe7fb,stroke:#6b4fa0
-    style IDX fill:#e1f5ff,stroke:#0288d1
+    style HYP fill:#efe7fb,stroke:#6b4fa0
+    style UICMD fill:#e1f5ff,stroke:#0288d1
 ```
+
+### System Architecture
+
+```mermaid
+graph TB
+    subgraph UI["DASHBOARD — zero-dependency JS"]
+        D1["Timeline · evidence explorer"]
+        D2["Hypotheses · actions · postmortem"]
+    end
+    subgraph API["API LAYER — FastAPI"]
+        A1["/api/incidents/{id}/analysis"]
+        A2["/api/incidents/{id}/evidence"]
+        A3["/api/adapter/status"]
+    end
+    subgraph SVC["ORCHESTRATION — backend/app"]
+        ORCH["IncidentService<br/>deterministic + AI overlay"]
+    end
+    subgraph CORE["ANALYSIS + AI"]
+        DET["Deterministic engine<br/>(analysis.py)"]
+        AI["AI analyst<br/>(ai_analyst.py) — grounded"]
+    end
+    subgraph RET["RETRIEVAL — SplunkAdapter"]
+        R1["Demo (deterministic)"]
+        R2["REST search export"]
+        R3["MCP — splunk_run_query"]
+    end
+
+    SPLUNK["Splunk Enterprise / Cloud<br/>index=ops_demo"]
+    MCPSRV["Splunk MCP Server (app 7931)"]
+    MODEL["Splunk hosted model /<br/>OpenAI-compatible endpoint"]
+
+    UI --> API
+    API --> ORCH
+    ORCH --> DET & AI & RET
+    R2 --> SPLUNK
+    R3 --> MCPSRV --> SPLUNK
+    AI --> MODEL
+
+    style ORCH fill:#fff4e1,stroke:#f57c00,stroke-width:2px
+    style AI fill:#efe7fb,stroke:#6b4fa0,stroke-width:2px
+    style R3 fill:#dff3e8,stroke:#2c6e49,stroke-width:2px
+    style SPLUNK fill:#e1f5ff,stroke:#0288d1
+    style MCPSRV fill:#dff3e8,stroke:#2c6e49
+```
+
+### Tool-Call Sequence
+
+```mermaid
+sequenceDiagram
+    participant Eng as On-call engineer
+    participant UI as Dashboard
+    participant API as FastAPI
+    participant SVC as IncidentService
+    participant MCP as Splunk MCP Server
+    participant SP as Splunk
+    participant AI as Reasoning model
+
+    Eng->>UI: open incident
+    UI->>API: GET /analysis + /evidence
+    API->>SVC: analyze_incident(id)
+    SVC->>MCP: call splunk_run_query(SPL)
+    MCP->>SP: run SPL search
+    SP-->>MCP: result rows
+    MCP-->>SVC: evidence (source = splunk_mcp)
+    SVC->>SVC: build timeline + blast radius (deterministic)
+    SVC->>AI: rank hypotheses / actions / postmortem (cite given evidence IDs only)
+    AI-->>SVC: grounded analysis (fallback: deterministic)
+    SVC-->>API: IncidentAnalysis
+    API-->>UI: render timeline, hypotheses, postmortem
+```
+
+Component responsibilities and the data-flow write-up are in [`architecture_diagram.md`](architecture_diagram.md) at the repo root.
 
 ## Tech Stack
 
